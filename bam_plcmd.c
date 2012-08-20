@@ -89,6 +89,7 @@ typedef struct {
 	char *reg, *pl_list, *fai_fname;
 	faidx_t *fai;
 	void *bed, *rghash;
+	call_model_t model; // for errmod
     int argc;
     char **argv;
 } mplp_conf_t;
@@ -318,7 +319,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
 		bh->l_txt = 1 + s.l;
 		bcf_hdr_sync(bh);
 		bcf_hdr_write(bp, bh);
-		bca = bcf_call_init(-1., conf->min_baseQ);
+		bca = bcf_call_init(-1., conf->min_baseQ, &(conf->model));
 		bcr = calloc(sm->n, sizeof(bcf_callret1_t));
 		bca->rghash = rghash;
 		bca->openQ = conf->openQ, bca->extQ = conf->extQ, bca->tandemQ = conf->tandemQ;
@@ -515,6 +516,8 @@ int bam_mpileup(int argc, char *argv[])
 	mplp.openQ = 40; mplp.extQ = 20; mplp.tandemQ = 100;
 	mplp.min_frac = 0.002; mplp.min_support = 1;
 	mplp.flag = MPLP_NO_ORPHAN | MPLP_REALN;
+	mplp.model.model_sel = MODEL_SEL_BINOM;
+	mplp.model.param.p = 0.5;
     mplp.argc = argc; mplp.argv = argv;
     static struct option lopts[] = 
     {
@@ -522,7 +525,7 @@ int bam_mpileup(int argc, char *argv[])
         {"ff",1,0,2},   // filter flag
         {0,0,0,0}
     };
-	while ((c = getopt_long(argc, argv, "Agf:r:l:M:q:Q:uaRC:BDSd:L:b:P:po:e:h:Im:F:EG:6OsV1:2:",lopts,NULL)) >= 0) {
+	while ((c = getopt_long(argc, argv, "Agf:r:l:M:q:Q:uaRC:BDSd:L:b:P:po:e:h:Im:F:EG:6OsV1:2:x:y:z:",lopts,NULL)) >= 0) {
 		switch (c) {
         case  1 : mplp.rflag_require = strtol(optarg,0,0); break;
         case  2 : mplp.rflag_filter  = strtol(optarg,0,0); break;
@@ -572,6 +575,9 @@ int bam_mpileup(int argc, char *argv[])
 				fclose(fp_rg);
 			}
 			break;
+		case 'x': { mplp.model.model_sel = MODEL_SEL_BINOM; mplp.model.param.p = atof(optarg); } break;
+		case 'y': { mplp.model.model_sel = MODEL_SEL_BETABINOM; mplp.model.param.ab.alpha = atof(optarg); } break;
+		case 'z': { mplp.model.model_sel = MODEL_SEL_BETABINOM; mplp.model.param.ab.beta = atof(optarg); } break;
 		}
 	}
 	if (use_orphan) mplp.flag &= ~MPLP_NO_ORPHAN;
@@ -596,6 +602,9 @@ int bam_mpileup(int argc, char *argv[])
 		fprintf(stderr, "       -Q INT       skip bases with baseQ/BAQ smaller than INT [%d]\n", mplp.min_baseQ);
 		fprintf(stderr, "       --rf INT     required flags: skip reads with mask bits unset []\n");
 		fprintf(stderr, "       --ff INT     filter flags: skip reads with mask bits set []\n");
+		fprintf(stderr, "       -x FLOAT     p-value for errmod binomial\n");
+		fprintf(stderr, "       -y FLOAT     alpha-value for errmod beta binomial\n");
+		fprintf(stderr, "       -z FLOAT     beta-value for errmod beta binomial\n");
 		fprintf(stderr, "\nOutput options:\n\n");
 		fprintf(stderr, "       -D           output per-sample DP in BCF (require -g/-u)\n");
 		fprintf(stderr, "       -g           generate BCF output (genotype likelihoods)\n");

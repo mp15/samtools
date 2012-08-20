@@ -64,7 +64,7 @@ typedef struct {
 extern "C" {
 #endif
 
-	bcf_callaux_t *bcf_call_init(double theta, int min_baseQ);
+	bcf_callaux_t *bcf_call_init(const double theta, const int min_baseQ, const call_model_t* model);
 	void bcf_call_destroy(bcf_callaux_t *bca);
 	int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t *bca, bcf_callret1_t *r);
 	int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int ref_base /*4-bit*/, bcf_call_t *call);

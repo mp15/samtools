@@ -31,7 +31,37 @@ static double* logbinomial_table( const int n_size )
     return logbinom;
 }
 
-static errmod_coef_t *cal_coef(double depcorr, double eta)
+static double* logbinomp_table( const int n_size, const double* distribution, const double p )
+{
+    int k, n;
+    double recip_ln_p = log(1.0/p);
+    double recip_ln_inv_p = log(1.0/(1.0 - p));
+ 
+    /* this calcs the p^k (1-p)^{n-k} */
+    /* of p(k) = {n! \over k! (n-k)! } p^k (1-p)^{n-k} */
+
+    double* bionomp = (double*)calloc(n_size * n_size, sizeof(double));
+	for (n = 0; n < n_size; ++n)
+		for (k = 0; k < n_size; ++k)
+			bionomp[n<<8|k] = distribution[n<<8|k] - (recip_ln_p*k + recip_ln_inv_p * (n-k));
+    return bionomp;
+}
+
+static double* logbetabinom_table( const int n_size, const double* distribution, const double alpha, const double beta )
+{
+    int k, n;
+   
+    /* p(k) = {n! \over k! (n-k)! } { gamma(alpha+k) gamma(n+beta-k) \over gamma(alpha+beta+n) } { gamma(alpha+beta) \over gamma(alpha) gamma(beta) }  */
+    
+    double* bionomp = (double*)calloc(n_size * n_size, sizeof(double));
+	for (n = 0; n < n_size; ++n)
+		for (k = 0; k < n_size; ++k)
+			bionomp[n<<8|k] = distribution[n<<8|k] + lgamma(alpha+k)+lgamma(n+beta-k) - lgamma(alpha+beta+n) + lgamma(alpha+beta) - lgamma(alpha) - lgamma(beta);
+    return bionomp;
+}
+
+
+static errmod_coef_t *cal_coef(const double depcorr, const double eta, const call_model_t* model)
 {
 	int k, n, q;
 	long double sum, sum1;
@@ -63,10 +93,17 @@ static errmod_coef_t *cal_coef(double depcorr, double eta)
 		}
 	}
 	// initialize ->lhet
-	ec->lhet = (double*)calloc(256 * 256, sizeof(double));
-	for (n = 0; n < 256; ++n)
-		for (k = 0; k < 256; ++k)
-			ec->lhet[n<<8|k] = lC[n<<8|k] - M_LN2 * n;
+	switch (model->model_sel)
+	{
+		case MODEL_SEL_BINOM:
+			ec->lhet = logbinomp_table( 256, lC, model->param.p );
+		break;
+		case MODEL_SEL_BETABINOM:
+			ec->lhet = logbetabinom_table( 256, lC, model->param.ab.alpha, model->param.ab.beta );
+		break;
+		default:
+			abort();
+	}
 	free(lC);
 	return ec;
 }
@@ -74,12 +111,12 @@ static errmod_coef_t *cal_coef(double depcorr, double eta)
 /**
  * Create errmod_t object with obj.depcorr set to depcorr and initialise
  */
-errmod_t *errmod_init(double depcorr)
+errmod_t *errmod_init(const double depcorr, const call_model_t* model)
 {
 	errmod_t *em;
 	em = (errmod_t*)calloc(1, sizeof(errmod_t));
 	em->depcorr = depcorr;
-	em->coef = cal_coef(depcorr, 0.03);
+	em->coef = cal_coef(depcorr, 0.03, model);
 	return em;
 }
 
@@ -140,7 +177,7 @@ int errmod_cal(const errmod_t *em, int n, int m, uint16_t *bases, float *q)
 
 	// generate likelihood
 	for (j = 0; j < m; ++j) {
-		float tmp1, tmp3;
+		double tmp1, tmp3;
 		int tmp2;
 		// homozygous
 		for (k = 0, tmp1 = tmp3 = 0.0, tmp2 = 0; k < m; ++k) {
@@ -151,15 +188,16 @@ int errmod_cal(const errmod_t *em, int n, int m, uint16_t *bases, float *q)
 			q[j*m+j] = tmp1;
 		}
 		// heterozygous
-		for (k = j + 1; k < m; ++k) {
+		for (k = 0; k < m; ++k) {
+			if (k == j) continue; /* skip the homs */
 			int cjk = aux.c[j] + aux.c[k];
 			for (i = 0, tmp2 = 0, tmp1 = tmp3 = 0.0; i < m; ++i) {
 				if (i == j || i == k) continue;
 				tmp1 += aux.bsum[i]; tmp2 += aux.c[i]; tmp3 += aux.fsum[i];
 			}
 			if (tmp2) {
-				q[j*m+k] = q[k*m+j] = -4.343 * em->coef->lhet[cjk<<8|aux.c[k]] + tmp1;
-			} else q[j*m+k] = q[k*m+j] = -4.343 * em->coef->lhet[cjk<<8|aux.c[k]]; // all the bases are either j or k
+				q[j*m+k] = -4.343 * em->coef->lhet[cjk<<8|aux.c[k]] + tmp1;
+			} else q[j*m+k] = -4.343 * em->coef->lhet[cjk<<8|aux.c[k]]; // all the bases are either j or k
 		}
 		/* clamp to greater than 0 */
 		for (k = 0; k < m; ++k) if (q[j*m+k] < 0.0) q[j*m+k] = 0.0;

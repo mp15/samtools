@@ -568,7 +568,10 @@ int main_phase(int argc, char *argv[])
 	iter = bam_plp_init(readaln, &g);
 	g.vpos_shift = 0;
 	seqs = kh_init(64);
-	em = errmod_init(1. - 0.83);
+	call_model_t model;
+	model.model_sel = MODEL_SEL_BINOM;
+	model.param.p = 0.5;
+	em = errmod_init(1. - 0.83, &model);
 	bases = calloc(g.max_depth, 2);
 	printf("CC\n");
 	printf("CC\tDescriptions:\nCC\n");

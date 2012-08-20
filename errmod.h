@@ -10,7 +10,22 @@ typedef struct {
 	struct __errmod_coef_t *coef;
 } errmod_t;
 
-errmod_t *errmod_init(double depcorr);
+/* parameters for the model used to fit heterozygotes */
+typedef struct {
+    int model_sel;
+    union {
+        double p;
+        struct {
+            double alpha;
+            double beta;
+        } ab;
+    } param;
+} call_model_t;
+
+#define MODEL_SEL_BINOM 0
+#define MODEL_SEL_BETABINOM 1
+
+errmod_t *errmod_init(const double depcorr, const call_model_t* model);
 void errmod_destroy(errmod_t *em);
 
 /*

@@ -1,6 +1,8 @@
 #include <assert.h>
 #include "bam_tview.h"
 
+#define CALL_P 0.5
+
 int base_tv_init(tview_t* tv,const char *fn, const char *fn_fa, const char *samples)
 	{
 	assert(tv!=NULL);
@@ -32,7 +34,11 @@ int base_tv_init(tview_t* tv,const char *fn, const char *fn_fa, const char *samp
 		}
 	tv->lplbuf = bam_lplbuf_init(tv_pl_func, tv);
 	if (fn_fa) tv->fai = fai_load(fn_fa);
-	tv->bca = bcf_call_init(0.83, 13);
+
+	call_model_t model;
+	model.model_sel = MODEL_SEL_BINOM;
+	model.param.p = CALL_P;
+	tv->bca = bcf_call_init(0.83, 13, &model); // TODO: check 0.83 is right and explain with comment if it is, everywhere else we use 1. - 0.83
 	tv->ins = 1;
 
     if ( samples ) 
@@ -219,6 +225,7 @@ int tv_pl_func(uint32_t tid, uint32_t pos, int n, const bam_pileup1_t *pl, void 
 	tv->last_pos = pos;
 	return 0;
 }
+
 
 
 

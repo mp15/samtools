@@ -16,15 +16,16 @@ extern const char bam_nt16_nt4_table[];
 
 #define CAP_DIST 25
 
-bcf_callaux_t *bcf_call_init(double theta, int min_baseQ)
+bcf_callaux_t *bcf_call_init(const double thetaIn, const int min_baseQ, const call_model_t* model)
 {
+	double theta;
 	bcf_callaux_t *bca;
-	if (theta <= 0.) theta = CALL_DEFTHETA;
+	if (thetaIn <= 0.) theta = CALL_DEFTHETA; else theta = thetaIn;
 	bca = calloc(1, sizeof(bcf_callaux_t));
 	bca->capQ = 60;
 	bca->openQ = 40; bca->extQ = 20; bca->tandemQ = 100;
 	bca->min_baseQ = min_baseQ;
-	bca->e = errmod_init(1. - theta);
+	bca->e = errmod_init(1. - theta, model);
 	bca->min_frac = 0.002;
 	bca->min_support = 1;
     bca->per_sample_flt = 0;
@@ -396,13 +397,14 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
 		call->PL = realloc(call->PL, 15 * n);
 	}
 	{
-		int x, g[15], z;
+		int x, g[15], h[15], z;
 		double sum_min = 0.;
 		x = call->n_alleles * (call->n_alleles + 1) / 2;
 		// get the possible genotypes
 		// this is done by creating an ordered list of locations g for call (allele a, allele b) in the genotype likelihood matrix
 		for (i = z = 0; i < call->n_alleles; ++i) {
 			for (j = 0; j <= i; ++j) {
+				h[z] = call->a[i] * 5 + call->a[j];
 				g[z++] = call->a[j] * 5 + call->a[i];
 			}
 		}
@@ -413,13 +415,18 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
 			float min = FLT_MAX;
 			for (j = 0; j < x; ++j) {
 				if (min > r->p[g[j]]) min = r->p[g[j]];
+				if (min > r->p[h[j]]) min = r->p[h[j]];
 			}
 			sum_min += min;
 			for (j = 0; j < x; ++j) {
+				int z;
+				z = (int)(r->p[h[j]] - min + .499);
+				if (z > 255) z = 255;
+
 				int y;
 				y = (int)(r->p[g[j]] - min + .499);
 				if (y > 255) y = 255;
-				PL[j] = y;
+				PL[j] = z < y ? z : y;
 			}
 		}
 //		if (ref_base < 0) fprintf(stderr, "%d,%d,%f,%d\n", call->n_alleles, x, sum_min, call->unseen);
