@@ -107,16 +107,50 @@ static void dump_tile( int tile_grid[2][3][16] )
 	printf( "\n" );
 }
 
-static void dump_tile_avg( welford_stat_t tile_grid_qual[2][3][16][100], int qual )
+static void dump_tile_isize_avg( welford_stat_t tile_grid_isize[2][3][16] )
 {
 	int surface, swath, tile;
 	for (surface = 0; surface < 2; ++surface) {
 		for (swath = 0; swath < 3; ++swath) {
-			if (tile_grid_qual[surface][swath][0]->samples != 0)
+			if (tile_grid_isize[surface][swath][0].samples != 0)
+			{
+				printf( "%f", tile_grid_isize[surface][swath][0].current_mean );
+				for (tile = 1; tile < 16; ++tile) {
+					if (tile_grid_isize[surface][swath][tile].samples == 0) break;
+					printf( "\t%f", tile_grid_isize[surface][swath][tile].current_mean );
+				}
+				printf( "\n" );
+			}
+		}
+		printf( "\n" );
+	}
+	for (surface = 0; surface < 2; ++surface) {
+		for (swath = 0; swath < 3; ++swath) {
+			if (tile_grid_isize[surface][swath][0].samples != 0)
+			{
+				printf( "%f", welford_sd(&tile_grid_isize[surface][swath][0]));
+				for (tile = 1; tile < 16; ++tile) {
+					if (tile_grid_isize[surface][swath][tile].samples == 0) break;
+					printf( "\t%f", welford_sd(&tile_grid_isize[surface][swath][tile]) );
+				}
+				printf( "\n" );
+			}
+		}
+		printf( "\n" );
+	}
+
+}
+
+static void dump_tile_qual_avg( welford_stat_t tile_grid_qual[2][3][16][100], int qual )
+{
+	int surface, swath, tile;
+	for (surface = 0; surface < 2; ++surface) {
+		for (swath = 0; swath < 3; ++swath) {
+			if (tile_grid_qual[surface][swath][0][qual].samples != 0)
 			{
 				printf( "%f", tile_grid_qual[surface][swath][0][qual].current_mean );
 				for (tile = 1; tile < 16; ++tile) {
-					if (tile_grid_qual[surface][swath][tile]->samples == 0) break;
+					if (tile_grid_qual[surface][swath][tile][qual].samples == 0) break;
 					printf( "\t%f", tile_grid_qual[surface][swath][tile][qual].current_mean );
 				}
 				printf( "\n" );
@@ -126,11 +160,11 @@ static void dump_tile_avg( welford_stat_t tile_grid_qual[2][3][16][100], int qua
 	}
 	for (surface = 0; surface < 2; ++surface) {
 		for (swath = 0; swath < 3; ++swath) {
-			if (tile_grid_qual[surface][swath][0]->samples != 0)
+			if (tile_grid_qual[surface][swath][0][qual].samples != 0)
 			{
 				printf( "%f", welford_sd(&tile_grid_qual[surface][swath][0][qual]));
 				for (tile = 1; tile < 16; ++tile) {
-					if (tile_grid_qual[surface][swath][tile]->samples == 0) break;
+					if (tile_grid_qual[surface][swath][tile][qual].samples == 0) break;
 					printf( "\t%f", welford_sd(&tile_grid_qual[surface][swath][tile][qual]) );
 				}
 				printf( "\n" );
@@ -180,7 +214,18 @@ static void clear_tq(welford_stat_t tile_grid_qual[2][3][16][100])
 	}
 }
 
-static void bam_qualview_core(samFile* in, FILE* out)
+static void clear_isize(welford_stat_t tile_grid_isize[2][3][16])
+{
+	int surface, swath;
+	for (surface = 0; surface < 2; ++surface) {
+		for (swath = 0; swath < 3; ++swath) {
+			memset(tile_grid_isize[surface][swath], 0, sizeof(welford_stat_t)*16);
+		}
+	}
+}
+
+
+static void bam_qualview_core(samFile* in, FILE* output[2][3][16]  )
 {
 	bam1_t* b = bam_init1();
 	bam_hdr_t* hdr = sam_hdr_read(in);
@@ -200,8 +245,10 @@ static void bam_qualview_core(samFile* in, FILE* out)
 	};
 
 	welford_stat_t tile_grid_qual[2][3][16][100];
+	welford_stat_t tile_grid_isize[2][3][16];
+
 	clear_tq(tile_grid_qual);
-				
+	clear_isize(tile_grid_isize);
 	while (sam_read1(in, hdr, b) >= 0) {
 		++count;
 		char* readname = bam_get_qname(b);
@@ -211,6 +258,11 @@ static void bam_qualview_core(samFile* in, FILE* out)
 		++tile_grid[parse->surface][parse->swath][parse->tile];
 		bam_glomp(b, tile_grid_qual[parse->surface][parse->swath][parse->tile]);
 		if ((b->core.flag&BAM_FUNMAP) == 0) {
+			if ((b->core.flag&BAM_FPROPER_PAIR) != 0 && (b->core.isize > 0)) {
+				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
+				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\n", b->core.isize);
+			}
+
 			tile_grid_mq[parse->surface][parse->swath][parse->tile] += b->core.qual;
 		}
 		
@@ -238,7 +290,8 @@ static void bam_qualview_core(samFile* in, FILE* out)
 		   swath[1][2]
 		   );
 	dump_tile(tile_grid);
-	dump_tile_avg(tile_grid_qual,99);
+	dump_tile_qual_avg(tile_grid_qual,99);
+	dump_tile_isize_avg(tile_grid_isize);
 	dump_tile_mq_avg(tile_grid,tile_grid_mq);
 	
 	bam_destroy1(b);
@@ -249,6 +302,33 @@ static void usage()
 	fprintf(stderr,"Usage information\n");
 }
 
+static void open_files(const char* prefix, FILE* out[2][3][16])
+{
+	int surface, swath, tile;
+	for (surface = 0; surface < 2; ++surface) {
+		for (swath = 0; swath < 3; ++swath) {
+			for (tile = 0; tile < 16; ++tile) {
+				char buf[255];
+				sprintf(buf, "%s_%d_%d_%d.tsv",prefix, surface, swath, tile);
+				out[surface][swath][tile] = fopen(buf, "w");
+			}
+		}
+	}
+}
+
+static void close_files(FILE* out[2][3][16])
+{
+	int surface, swath, tile;
+	for (surface = 0; surface < 2; ++surface) {
+		for (swath = 0; swath < 3; ++swath) {
+			for (tile = 0; tile < 16; ++tile) {
+				fclose(out[surface][swath][tile]);
+			}
+		}
+	}
+}
+
+
 #if 0
 int bam_qualview(int argc, char *argv[])
 #else
@@ -257,17 +337,17 @@ int main(int argc, char *argv[])
 {
 	int c;
 	samFile* in;
-	FILE* out;
+	FILE* out[2][3][16];
 	while ((c = getopt(argc, argv, "")) >= 0) {
 		switch (c) {
 		}
 	}
 	if (optind+1 >= argc) usage();
 	in = sam_open(argv[optind], "rb", NULL);
-	out = (strcmp(argv[optind+1], "-") == 0)? stdout : fopen(argv[optind+1], "w");
+	open_files(argv[optind+1],out);
 	bam_qualview_core(in, out);
 	sam_close(in);
-	fclose(out);
+	close_files(out);
 	return 0;
 }
 
