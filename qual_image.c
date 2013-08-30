@@ -250,9 +250,19 @@ static void bam_qualview_core(samFile* in, FILE* output[2][3][16]  )
 	clear_tq(tile_grid_qual);
 	clear_isize(tile_grid_isize);
 	while (sam_read1(in, hdr, b) >= 0) {
+		if (b->core.flag&BAM_FSECONDARY)
+			continue;
 		++count;
 		char* readname = bam_get_qname(b);
 		parsed_readname_t* parse = parse_readname(readname);
+		int read = 0;
+		if ((b->core.flag&(BAM_FREAD1|BAM_FREAD2)) == (BAM_FREAD1|BAM_FREAD2)) {
+		} else if (b->core.flag&BAM_FREAD1) {
+			read = 1;
+		} else if (b->core.flag&BAM_FREAD2) {
+			read = 2;
+		}
+
 		++surface[parse->surface];
 		++swath[parse->surface][parse->swath];
 		++tile_grid[parse->surface][parse->swath][parse->tile];
@@ -260,7 +270,7 @@ static void bam_qualview_core(samFile* in, FILE* output[2][3][16]  )
 		if ((b->core.flag&BAM_FUNMAP) == 0) {
 			if ((b->core.flag&BAM_FPROPER_PAIR) != 0 && (b->core.isize > 0)) {
 				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
-				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\n", b->core.isize);
+				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\t%d\t%d\t%d\n", bam_get_qual(b)[99], parse->x, parse->y, read);
 			}
 
 			tile_grid_mq[parse->surface][parse->swath][parse->tile] += b->core.qual;
