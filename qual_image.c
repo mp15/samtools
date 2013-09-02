@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "htslib/sam.h"
+#include <png.h>
 
 typedef struct welford_stat {
 	int samples;
@@ -225,7 +226,7 @@ static void clear_isize(welford_stat_t tile_grid_isize[2][3][16])
 }
 
 
-static void bam_qualview_core(samFile* in, FILE* output[2][3][16]  )
+static void bam_qualview_core(samFile* in, FILE* output[2][3][16], FILE* png[2][3][16] )
 {
 	bam1_t* b = bam_init1();
 	bam_hdr_t* hdr = sam_hdr_read(in);
@@ -312,27 +313,50 @@ static void usage()
 	fprintf(stderr,"Usage information\n");
 }
 
-static void open_files(const char* prefix, FILE* out[2][3][16])
+static bool open_files(const char* prefix, FILE* out[2][3][16], FILE* png[2][3][16], png_structp png_ptr[2][3][16])
 {
 	int surface, swath, tile;
 	for (surface = 0; surface < 2; ++surface) {
 		for (swath = 0; swath < 3; ++swath) {
 			for (tile = 0; tile < 16; ++tile) {
 				char buf[255];
+				char buf_png[255];
 				sprintf(buf, "%s_%d_%d_%d.tsv",prefix, surface, swath, tile);
+				sprintf(buf_png, "%s_%d_%d_%d.png",prefix, surface, swath, tile);
 				out[surface][swath][tile] = fopen(buf, "w");
+				png[surface][swath][tile] = fopen(buf_png, "wb");
+				
+				png_structp png_ptr[surface][swath][tile] = png_create_write_struct
+				(PNG_LIBPNG_VER_STRING, (png_voidp)user_error_ptr,
+				 user_error_fn, user_warning_fn);
+				
+				if (!png_ptr[surface][swath][tile])
+					return false;
+				
+				png_infop info_ptr = png_create_info_struct(png_ptr[surface][swath][tile]);
+				if (!info_ptr)
+				{
+					png_destroy_write_struct(&png_ptr[surface][swath][tile],
+											 (png_infopp)NULL);
+					return false;
+				}
+				
+				png_init_io(png_ptr[surface][swath][tile], png[surface][swath][tile]);
+				png_set_IHDR(png_ptr[surface][swath][tile], info_ptr, 2048,10000, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 			}
 		}
 	}
+	return true;
 }
 
-static void close_files(FILE* out[2][3][16])
+static void close_files(FILE* out[2][3][16], FILE* png[2][3][16], png_structp png_ptr[2][3][16])
 {
 	int surface, swath, tile;
 	for (surface = 0; surface < 2; ++surface) {
 		for (swath = 0; swath < 3; ++swath) {
 			for (tile = 0; tile < 16; ++tile) {
 				fclose(out[surface][swath][tile]);
+				fclose(png[surface][swath][tile]);
 			}
 		}
 	}
@@ -348,16 +372,18 @@ int main(int argc, char *argv[])
 	int c;
 	samFile* in;
 	FILE* out[2][3][16];
+	FILE* png[2][3][16];
+	png_structp png_ptr[2][3][16];
 	while ((c = getopt(argc, argv, "")) >= 0) {
 		switch (c) {
 		}
 	}
 	if (optind+1 >= argc) usage();
 	in = sam_open(argv[optind], "rb", NULL);
-	open_files(argv[optind+1],out);
-	bam_qualview_core(in, out);
+	open_files(argv[optind+1],out, png, png_ptr);
+	bam_qualview_core(in, out, png_ptr);
 	sam_close(in);
-	close_files(out);
+	close_files(out, png, png_ptr);
 	return 0;
 }
 
