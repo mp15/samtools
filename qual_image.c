@@ -21,6 +21,9 @@
 #include "htslib/sam.h"
 #include <png.h>
 
+const int X_LEN = 2048+100;
+const int Y_LEN = 10000+100;
+
 typedef struct welford_stat {
 	int samples;
 	double current_mean;
@@ -229,7 +232,7 @@ static void clear_isize(welford_stat_t tile_grid_isize[2][3][16])
 }
 
 
-static void bam_qualview_core(samFile* in, FILE* output[2][3][16], png_structp png_ptr[2][3][16], png_infop info_ptr[2][3][16] )
+static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* prefix )
 {
 	bam1_t* b = bam_init1();
 	bam_hdr_t* hdr = sam_hdr_read(in);
@@ -257,23 +260,45 @@ static void bam_qualview_core(samFile* in, FILE* output[2][3][16], png_structp p
 	png_structp current_png;
 	png_infop current_png_info;
 	png_bytepp current_bitmap;
+	FILE* png;
 	
 	if (sam_read1(in, hdr, b) >= 0) {
 		parsed_readname_t* parse = parse_readname(bam_get_qname(b));
 		full_tile = parse->full_tile;
-		current_png = png_ptr[parse->surface][parse->swath][parse->tile];
-		current_png_info = info_ptr[parse->surface][parse->swath][parse->tile];
+		
+		char buf_png[255];
+		sprintf(buf_png, "%s_%d_%d_%d.png", prefix, parse->surface, parse->swath, parse->tile);
+		png = fopen(buf_png, "wb");
+		
+		current_png = png_create_write_struct
+		(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+		
+		if (!current_png)
+			return false;
+		
+		current_png_info = png_create_info_struct(current_png);
+		if (!current_png_info)
+		{
+			png_destroy_write_struct(&current_png,
+									 (png_infopp)NULL);
+			return false;
+		}
+		
+		png_init_io(current_png, png);
+		png_set_IHDR(current_png, current_png_info, X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+		png_write_info(current_png, current_png_info);
+
 		parsed_readname_destroy(parse);
 	
-		current_bitmap = (png_bytepp)calloc(2048, sizeof(png_bytep));
+		current_bitmap = (png_bytepp)calloc(Y_LEN, sizeof(png_bytep));
 		int i;
-		for (i = 0; i < 2048; ++i) {
-			current_bitmap[i] = (png_bytep)calloc(10000,png_get_rowbytes(current_png,current_png_info));
+		for (i = 0; i < Y_LEN; ++i) {
+			current_bitmap[i] = (png_bytep)calloc(X_LEN,png_get_rowbytes(current_png,current_png_info));
 		}
 	}
 	else {
 		bam_destroy1(b);
-		return;
+		return true;
 	}
 	do {
 		if (b->core.flag&BAM_FSECONDARY)
@@ -291,13 +316,35 @@ static void bam_qualview_core(samFile* in, FILE* output[2][3][16], png_structp p
 		{
 			png_write_image(current_png, current_bitmap);
 			png_write_end(current_png, current_png_info);
+			fclose(png);
+			png_destroy_write_struct(&current_png, &current_png_info);
+
 			int i;
-			for (i = 0; i < 2048; ++i) {
-				memset(current_bitmap[i], 0, png_get_rowbytes(current_png,current_png_info)*10000);
+			for (i = 0; i < Y_LEN; ++i) {
+				memset(current_bitmap[i], 0, png_get_rowbytes(current_png,current_png_info)*X_LEN);
 			}
 			full_tile = parse->full_tile;
-			current_png = png_ptr[parse->surface][parse->swath][parse->tile];
-			current_png_info = info_ptr[parse->surface][parse->swath][parse->tile];
+			char buf_png[255];
+			sprintf(buf_png, "%s_%d_%d_%d.png", prefix, parse->surface, parse->swath, parse->tile);
+			png = fopen(buf_png, "wb");
+			
+			current_png = png_create_write_struct
+			(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+			
+			if (!current_png)
+				return false;
+			
+			current_png_info = png_create_info_struct(current_png);
+			if (!current_png_info)
+			{
+				png_destroy_write_struct(&current_png,
+										 (png_infopp)NULL);
+				return false;
+			}
+			
+			png_init_io(current_png, png);
+			png_set_IHDR(current_png, current_png_info, X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			png_write_info(current_png, current_png_info);
 		}
 
 		++surface[parse->surface];
@@ -309,17 +356,22 @@ static void bam_qualview_core(samFile* in, FILE* output[2][3][16], png_structp p
 				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
 				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\t%d\t%d\t%d\n", bam_get_qual(b)[99], parse->x, parse->y, read);
 				
-				current_bitmap[parse->x][parse->y] = bam_get_qual(b)[99];
+				current_bitmap[parse->y/10][parse->x/10] = bam_get_qual(b)[99];
 			}
 
 			tile_grid_mq[parse->surface][parse->swath][parse->tile] += b->core.qual;
 		}
 		
 		parsed_readname_destroy(parse);
+		if (count == 10) break;
 	} while (sam_read1(in, hdr, b) >= 0);
+	png_write_image(current_png, current_bitmap);
+	png_write_end(current_png, current_png_info);
+	fclose(png);
+	png_destroy_write_struct(&current_png, &current_png_info);
 
 	int i;
-	for (i = 0; i < 2048; ++i) {
+	for (i = 0; i < Y_LEN; ++i) {
 		free(current_bitmap[i]);
 	}
 	free(current_bitmap);
@@ -350,6 +402,7 @@ static void bam_qualview_core(samFile* in, FILE* output[2][3][16], png_structp p
 	dump_tile_mq_avg(tile_grid,tile_grid_mq);
 	
 	bam_destroy1(b);
+	return true;
 }
 
 static void usage()
@@ -357,49 +410,28 @@ static void usage()
 	fprintf(stderr,"Usage information\n");
 }
 
-static bool open_files(const char* prefix, FILE* out[2][3][16], FILE* png[2][3][16], png_structp png_ptr[2][3][16], png_infop info_ptr[2][3][16])
+static bool open_files(const char* prefix, FILE* out[2][3][16])
 {
 	int surface, swath, tile;
 	for (surface = 0; surface < 2; ++surface) {
 		for (swath = 0; swath < 3; ++swath) {
 			for (tile = 0; tile < 16; ++tile) {
 				char buf[255];
-				char buf_png[255];
 				sprintf(buf, "%s_%d_%d_%d.tsv",prefix, surface, swath, tile);
-				sprintf(buf_png, "%s_%d_%d_%d.png",prefix, surface, swath, tile);
 				out[surface][swath][tile] = fopen(buf, "w");
-				png[surface][swath][tile] = fopen(buf_png, "wb");
-				
-				png_ptr[surface][swath][tile] = png_create_write_struct
-				(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-				
-				if (!png_ptr[surface][swath][tile])
-					return false;
-				
-				info_ptr[surface][swath][tile] = png_create_info_struct(png_ptr[surface][swath][tile]);
-				if (!info_ptr[surface][swath][tile])
-				{
-					png_destroy_write_struct(&png_ptr[surface][swath][tile],
-											 (png_infopp)NULL);
-					return false;
-				}
-				
-				png_init_io(png_ptr[surface][swath][tile], png[surface][swath][tile]);
-				png_set_IHDR(png_ptr[surface][swath][tile], info_ptr[surface][swath][tile], 2048,10000, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 			}
 		}
 	}
 	return true;
 }
 
-static void close_files(FILE* out[2][3][16], FILE* png[2][3][16], png_structp png_ptr[2][3][16])
+static void close_files(FILE* out[2][3][16])
 {
 	int surface, swath, tile;
 	for (surface = 0; surface < 2; ++surface) {
 		for (swath = 0; swath < 3; ++swath) {
 			for (tile = 0; tile < 16; ++tile) {
 				fclose(out[surface][swath][tile]);
-				fclose(png[surface][swath][tile]);
 			}
 		}
 	}
@@ -415,19 +447,16 @@ int main(int argc, char *argv[])
 	int c;
 	samFile* in;
 	FILE* out[2][3][16];
-	FILE* png[2][3][16];
-	png_structp png_ptr[2][3][16];
-	png_infop info_ptr[2][3][16];
 	while ((c = getopt(argc, argv, "")) >= 0) {
 		switch (c) {
 		}
 	}
 	if (optind+1 >= argc) usage();
 	in = sam_open(argv[optind], "rb", NULL);
-	open_files(argv[optind+1],out, png, png_ptr, info_ptr);
-	bam_qualview_core(in, out, png_ptr, info_ptr);
+	open_files(argv[optind+1],out);
+	bam_qualview_core(in, out, argv[optind+1]);
 	sam_close(in);
-	close_files(out, png, png_ptr);
+	close_files(out);
 	return 0;
 }
 
