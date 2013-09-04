@@ -1,0 +1,5 @@
+input <- read.table('q99_1_2_0.tsv')
+input_fwd <- subset(input, V4 == 0)
+input_rev <- subset(input, V4 == 1)
+plot(input_fwd$V2, input_fwd$V3, col=heat.colors(40)[input_fwd$V1], pch=".")
+plot(input_rev$V2, input_rev$V3, col=heat.colors(40)[input_rev$V1], pch=".")

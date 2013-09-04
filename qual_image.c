@@ -257,43 +257,60 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 	clear_tq(tile_grid_qual);
 	clear_isize(tile_grid_isize);
 	int full_tile;
-	png_structp current_png;
-	png_infop current_png_info;
-	png_bytepp current_bitmap;
-	FILE* png;
+	png_structp current_png[2];
+	png_infop current_png_info[2];
+	png_bytepp current_bitmap[2];
+	FILE* png[2];
 	
 	if (sam_read1(in, hdr, b) >= 0) {
 		parsed_readname_t* parse = parse_readname(bam_get_qname(b));
 		full_tile = parse->full_tile;
 		
-		char buf_png[255];
-		sprintf(buf_png, "%s_%d_%d_%d.png", prefix, parse->surface, parse->swath, parse->tile);
-		png = fopen(buf_png, "wb");
+		char buf_png[2][255];
+		sprintf(buf_png[0], "%s_%d_%d_%d_fwd.png", prefix, parse->surface, parse->swath, parse->tile);
+		sprintf(buf_png[1], "%s_%d_%d_%d_rev.png", prefix, parse->surface, parse->swath, parse->tile);
+		parsed_readname_destroy(parse);
+		// Create images
+		png[0] = fopen(buf_png[0], "wb");
+		png[1] = fopen(buf_png[1], "wb");
 		
-		current_png = png_create_write_struct
+		current_png[0] = png_create_write_struct
+		(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+		current_png[1] = png_create_write_struct
 		(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 		
-		if (!current_png)
+		if (!current_png[0] || !current_png[1])
 			return false;
 		
-		current_png_info = png_create_info_struct(current_png);
-		if (!current_png_info)
+		current_png_info[0] = png_create_info_struct(current_png[0]);
+		if (!current_png_info[0])
 		{
-			png_destroy_write_struct(&current_png,
+			png_destroy_write_struct(&current_png[0],
+									 (png_infopp)NULL);
+			return false;
+		}
+		current_png_info[1] = png_create_info_struct(current_png[1]);
+		if (!current_png_info[1]) {
+			png_destroy_write_struct(&current_png[0],
+									 &current_png_info[0]);
+			png_destroy_write_struct(&current_png[1],
 									 (png_infopp)NULL);
 			return false;
 		}
 		
-		png_init_io(current_png, png);
-		png_set_IHDR(current_png, current_png_info, X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-		png_write_info(current_png, current_png_info);
+		png_init_io(current_png[0], png[0]);
+		png_init_io(current_png[1], png[1]);
+		png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+		png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+		png_write_info(current_png[0], current_png_info[0]);
+		png_write_info(current_png[1], current_png_info[1]);
 
-		parsed_readname_destroy(parse);
-	
-		current_bitmap = (png_bytepp)calloc(Y_LEN, sizeof(png_bytep));
+		current_bitmap[0] = (png_bytepp)calloc(Y_LEN, sizeof(png_bytep));
+		current_bitmap[1] = (png_bytepp)calloc(Y_LEN, sizeof(png_bytep));
 		int i;
 		for (i = 0; i < Y_LEN; ++i) {
-			current_bitmap[i] = (png_bytep)calloc(X_LEN,png_get_rowbytes(current_png,current_png_info));
+			current_bitmap[0][i] = (png_bytep)calloc(X_LEN,png_get_rowbytes(current_png[0],current_png_info[0]));
+			current_bitmap[1][i] = (png_bytep)calloc(X_LEN,png_get_rowbytes(current_png[1],current_png_info[1]));
 		}
 	}
 	else {
@@ -303,78 +320,100 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 	do {
 		if (b->core.flag&BAM_FSECONDARY)
 			continue;
-		++count;
 		parsed_readname_t* parse = parse_readname(bam_get_qname(b));
-		int read = 0;
+		int read = -1;
 		if ((b->core.flag&(BAM_FREAD1|BAM_FREAD2)) == (BAM_FREAD1|BAM_FREAD2)) {
 		} else if (b->core.flag&BAM_FREAD1) {
-			read = 1;
+			read = 0;
 		} else if (b->core.flag&BAM_FREAD2) {
-			read = 2;
+			read = 1;
 		}
 		if (full_tile != parse->full_tile)
 		{
-			png_write_image(current_png, current_bitmap);
-			png_write_end(current_png, current_png_info);
-			fclose(png);
-			png_destroy_write_struct(&current_png, &current_png_info);
+			png_write_image(current_png[0], current_bitmap[0]);
+			png_write_image(current_png[1], current_bitmap[1]);
+			png_write_end(current_png[0], current_png_info[0]);
+			png_write_end(current_png[1], current_png_info[1]);
+			fclose(png[0]);
+			fclose(png[1]);
+			png_destroy_write_struct(&current_png[0], &current_png_info[0]);
+			png_destroy_write_struct(&current_png[1], &current_png_info[1]);
 
 			int i;
 			for (i = 0; i < Y_LEN; ++i) {
-				memset(current_bitmap[i], 0, png_get_rowbytes(current_png,current_png_info)*X_LEN);
+				memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0])*X_LEN);
+				memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1])*X_LEN);
 			}
 			full_tile = parse->full_tile;
-			char buf_png[255];
-			sprintf(buf_png, "%s_%d_%d_%d.png", prefix, parse->surface, parse->swath, parse->tile);
-			png = fopen(buf_png, "wb");
+			char buf_png[2][255];
+			sprintf(buf_png[0], "%s_%d_%d_%d_fwd.png", prefix, parse->surface, parse->swath, parse->tile);
+			sprintf(buf_png[1], "%s_%d_%d_%d_rev.png", prefix, parse->surface, parse->swath, parse->tile);
+
+			// Create images
+			png[0] = fopen(buf_png[0], "wb");
+			png[1] = fopen(buf_png[1], "wb");
 			
-			current_png = png_create_write_struct
+			current_png[0] = png_create_write_struct
+			(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+			current_png[1] = png_create_write_struct
 			(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 			
-			if (!current_png)
+			if (!current_png[0] || !current_png[1])
 				return false;
 			
-			current_png_info = png_create_info_struct(current_png);
-			if (!current_png_info)
+			current_png_info[0] = png_create_info_struct(current_png[0]);
+			current_png_info[1] = png_create_info_struct(current_png[1]);
+			if (!current_png_info[0] || !current_png_info[1])
 			{
-				png_destroy_write_struct(&current_png,
+				png_destroy_write_struct(&current_png[0],
+										 (png_infopp)NULL);
+				png_destroy_write_struct(&current_png[1],
 										 (png_infopp)NULL);
 				return false;
 			}
 			
-			png_init_io(current_png, png);
-			png_set_IHDR(current_png, current_png_info, X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-			png_write_info(current_png, current_png_info);
+			png_init_io(current_png[0], png[0]);
+			png_init_io(current_png[1], png[1]);
+			png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			png_write_info(current_png[0], current_png_info[0]);
+			png_write_info(current_png[1], current_png_info[1]);
 		}
-
-		++surface[parse->surface];
-		++swath[parse->surface][parse->swath];
-		++tile_grid[parse->surface][parse->swath][parse->tile];
-		bam_glomp(b, tile_grid_qual[parse->surface][parse->swath][parse->tile]);
 		if ((b->core.flag&BAM_FUNMAP) == 0) {
 			if ((b->core.flag&BAM_FPROPER_PAIR) != 0 && (b->core.isize > 0)) {
+				++count;
+				bam_glomp(b, tile_grid_qual[parse->surface][parse->swath][parse->tile]);
+				
+				++surface[parse->surface];
+				++swath[parse->surface][parse->swath];
+				++tile_grid[parse->surface][parse->swath][parse->tile];
+
 				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
 				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\t%d\t%d\t%d\n", bam_get_qual(b)[99], parse->x, parse->y, read);
-				
-				current_bitmap[parse->y/10][parse->x/10] = bam_get_qual(b)[99];
+				current_bitmap[read][parse->y/10][parse->x/10] = (int)(((double)bam_get_qual(b)[99]/40.0) * 255);
 			}
 
 			tile_grid_mq[parse->surface][parse->swath][parse->tile] += b->core.qual;
 		}
 		
 		parsed_readname_destroy(parse);
-		if (count == 10) break;
 	} while (sam_read1(in, hdr, b) >= 0);
-	png_write_image(current_png, current_bitmap);
-	png_write_end(current_png, current_png_info);
-	fclose(png);
-	png_destroy_write_struct(&current_png, &current_png_info);
+	png_write_image(current_png[0], current_bitmap[0]);
+	png_write_image(current_png[1], current_bitmap[1]);
+	png_write_end(current_png[0], current_png_info[0]);
+	png_write_end(current_png[1], current_png_info[1]);
+	fclose(png[0]);
+	fclose(png[1]);
+	png_destroy_write_struct(&current_png[0], &current_png_info[0]);
+	png_destroy_write_struct(&current_png[1], &current_png_info[1]);
 
 	int i;
 	for (i = 0; i < Y_LEN; ++i) {
-		free(current_bitmap[i]);
+		free(current_bitmap[0][i]);
+		free(current_bitmap[0][i]);
 	}
-	free(current_bitmap);
+	free(current_bitmap[0]);
+	free(current_bitmap[1]);
 	
 	// summary
 	printf("Count: %d\n"
