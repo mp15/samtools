@@ -24,6 +24,62 @@
 const int X_LEN = 2048+100;
 const int Y_LEN = 10000+100;
 
+const png_color QUAL_PALETTE[] = {
+	{ .red = 0xFF, .green = 0xFF, .blue = 0xFF },
+	{ .red = 0xFF, .green = 0x00, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x07, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x0E, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x15, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x1C, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x22, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x29, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x30, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x37, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x3E, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x45, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x4C, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x53, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x5A, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x60, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x67, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x6E, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x75, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x7C, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x83, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x8A, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x91, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x98, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0x9F, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xA5, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xAC, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xB3, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xBA, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xC1, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xC8, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xCF, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xD6, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xDD, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xE3, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xEA, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xF1, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xF8, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x00 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x0B },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x20 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x35 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x4A },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x60 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x75 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x8A },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0x9F },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0xB5 },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0xCA },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0xDF },
+	{ .red = 0xFF, .green = 0xFF, .blue = 0xF4 },
+};
+
+
+
 typedef struct welford_stat {
 	int samples;
 	double current_mean;
@@ -300,8 +356,10 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 		
 		png_init_io(current_png[0], png[0]);
 		png_init_io(current_png[1], png[1]);
-		png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-		png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+		png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+		png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+		png_set_PLTE(current_png[0], current_png_info[0], QUAL_PALETTE, 51);
+		png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, 51);
 		png_write_info(current_png[0], current_png_info[0]);
 		png_write_info(current_png[1], current_png_info[1]);
 
@@ -374,8 +432,10 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 			
 			png_init_io(current_png[0], png[0]);
 			png_init_io(current_png[1], png[1]);
-			png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-			png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+			png_set_PLTE(current_png[0], current_png_info[0], QUAL_PALETTE, 51);
+			png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, 51);
 			png_write_info(current_png[0], current_png_info[0]);
 			png_write_info(current_png[1], current_png_info[1]);
 		}
@@ -390,7 +450,7 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 
 				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
 				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\t%d\t%d\t%d\n", bam_get_qual(b)[99], parse->x, parse->y, read);
-				current_bitmap[read][parse->y/10][parse->x/10] = (int)(((double)bam_get_qual(b)[99]/40.0) * 255);
+				current_bitmap[read][parse->y/10][parse->x/10] = bam_get_qual(b)[99];
 			}
 
 			tile_grid_mq[parse->surface][parse->swath][parse->tile] += b->core.qual;
