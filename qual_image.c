@@ -24,8 +24,10 @@
 const int X_LEN = 2048+100;
 const int Y_LEN = 10000+100;
 
-const png_color QUAL_PALETTE[] = {
-	{ .red = 0xFF, .green = 0xFF, .blue = 0xFF },
+#ifdef FULL_PALETTE
+#define QUAL_PALETTE_LEN 51
+static const png_color QUAL_PALETTE[QUAL_PALETTE_LEN] = {
+	{ .red = 0x00, .green = 0x00, .blue = 0x00 },
 	{ .red = 0xFF, .green = 0x00, .blue = 0x00 },
 	{ .red = 0xFF, .green = 0x07, .blue = 0x00 },
 	{ .red = 0xFF, .green = 0x0E, .blue = 0x00 },
@@ -77,6 +79,16 @@ const png_color QUAL_PALETTE[] = {
 	{ .red = 0xFF, .green = 0xFF, .blue = 0xDF },
 	{ .red = 0xFF, .green = 0xFF, .blue = 0xF4 },
 };
+#else
+#define QUAL_PALETTE_LEN 5
+static const png_color QUAL_PALETTE[QUAL_PALETTE_LEN] = {
+	{ .red = 0xFF, .green = 0xFF, .blue = 0xFF }, // None
+	{ .red = 0xFF, .green = 0x00, .blue = 0x00 }, // 0-10
+	{ .red = 0x00, .green = 0xFF, .blue = 0x00 }, // 10-20
+	{ .red = 0x00, .green = 0x00, .blue = 0x7F }, // 20-30
+	{ .red = 0x00, .green = 0x00, .blue = 0xFF }, // 30+
+};
+#endif
 
 
 
@@ -434,8 +446,8 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 			png_init_io(current_png[1], png[1]);
 			png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 			png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-			png_set_PLTE(current_png[0], current_png_info[0], QUAL_PALETTE, 51);
-			png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, 51);
+			png_set_PLTE(current_png[0], current_png_info[0], QUAL_PALETTE, QUAL_PALETTE_LEN);
+			png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, QUAL_PALETTE_LEN);
 			png_write_info(current_png[0], current_png_info[0]);
 			png_write_info(current_png[1], current_png_info[1]);
 		}
@@ -450,7 +462,19 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 
 				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
 				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\t%d\t%d\t%d\n", bam_get_qual(b)[99], parse->x, parse->y, read);
+#ifdef FULL_PALETTE
 				current_bitmap[read][parse->y/10][parse->x/10] = bam_get_qual(b)[99];
+#else
+				if (bam_get_qual(b)[99] > 30) {
+					current_bitmap[read][parse->y/10][parse->x/10] = 4;
+				} else if (bam_get_qual(b)[99] > 20) {
+					current_bitmap[read][parse->y/10][parse->x/10] = 3;
+				} else if (bam_get_qual(b)[99] > 10) {
+					current_bitmap[read][parse->y/10][parse->x/10] = 2;
+				} else {
+					current_bitmap[read][parse->y/10][parse->x/10] = 1;
+				}
+#endif
 			}
 
 			tile_grid_mq[parse->surface][parse->swath][parse->tile] += b->core.qual;
@@ -537,11 +561,7 @@ static void close_files(FILE* out[2][3][16])
 }
 
 
-#if 0
 int bam_qualview(int argc, char *argv[])
-#else
-int main(int argc, char *argv[])
-#endif
 {
 	int c;
 	samFile* in;

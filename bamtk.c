@@ -111,6 +111,7 @@ int main(int argc, char *argv[])
 #if _CURSES_LIB != 0
 	else if (strcmp(argv[1], "tview") == 0) return bam_tview_main(argc-1, argv+1);
 #endif
+	else if (strcmp(argv[1], "qualimage") == 0) return bam_qualview(argc-1, argv+1);
 	else {
 		fprintf(stderr, "[main] unrecognized command '%s'\n", argv[1]);
 		return 1;
