@@ -428,22 +428,6 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 			fclose(png[0]);
 			fclose(png[1]);
 
-			current_bitmap[0] = (png_bytepp)png_malloc(current_png[0], Y_LEN * sizeof(png_bytep));
-			current_bitmap[1] = (png_bytepp)png_malloc(current_png[1], Y_LEN * sizeof(png_bytep));
-			if (!current_bitmap[0])
-				abort();
-			if (!current_bitmap[1])
-				abort();
-			for (i = 0; i < Y_LEN; ++i) {
-				current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], png_get_rowbytes(current_png[0],current_png_info[0]));
-				current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], png_get_rowbytes(current_png[1],current_png_info[1]));
-				if (!current_bitmap[0][i])
-					abort();
-				if (!current_bitmap[1][i])
-					abort();
-				memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0]));
-				memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1]));
-			}
 			full_tile = parse->full_tile;
 			char buf_png[2][255];
 			sprintf(buf_png[0], "%s_%d_%d_%d_fwd.png", prefix, parse->surface, parse->swath, parse->tile);
@@ -480,6 +464,23 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 			png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, QUAL_PALETTE_LEN);
 			png_write_info(current_png[0], current_png_info[0]);
 			png_write_info(current_png[1], current_png_info[1]);
+
+			current_bitmap[0] = (png_bytepp)png_malloc(current_png[0], Y_LEN * sizeof(png_bytep));
+			current_bitmap[1] = (png_bytepp)png_malloc(current_png[1], Y_LEN * sizeof(png_bytep));
+			if (!current_bitmap[0])
+				abort();
+			if (!current_bitmap[1])
+				abort();
+			for (i = 0; i < Y_LEN; ++i) {
+				current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], png_get_rowbytes(current_png[0],current_png_info[0]));
+				current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], png_get_rowbytes(current_png[1],current_png_info[1]));
+				if (!current_bitmap[0][i])
+					abort();
+				if (!current_bitmap[1][i])
+					abort();
+				memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0]));
+				memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1]));
+			}
 		}
 		if ((b->core.flag&BAM_FUNMAP) == 0) {
 			if ((b->core.flag&BAM_FPROPER_PAIR) != 0 && (b->core.isize > 0)) {
