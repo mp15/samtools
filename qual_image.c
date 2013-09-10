@@ -377,10 +377,18 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 
 		current_bitmap[0] = (png_bytepp)png_malloc(current_png[0], Y_LEN * sizeof(png_bytep));
 		current_bitmap[1] = (png_bytepp)png_malloc(current_png[1], Y_LEN * sizeof(png_bytep));
+		if (!current_bitmap[0])
+			abort();
+		if (!current_bitmap[1])
+			abort();
 		int i;
 		for (i = 0; i < Y_LEN; ++i) {
 			current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], png_get_rowbytes(current_png[0],current_png_info[0]));
 			current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], png_get_rowbytes(current_png[1],current_png_info[1]));
+			if (!current_bitmap[0][i])
+				abort();
+			if (!current_bitmap[1][i])
+				abort();
 			memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0]));
 			memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1]));
 		}
@@ -422,9 +430,17 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 
 			current_bitmap[0] = (png_bytepp)png_malloc(current_png[0], Y_LEN * sizeof(png_bytep));
 			current_bitmap[1] = (png_bytepp)png_malloc(current_png[1], Y_LEN * sizeof(png_bytep));
+			if (!current_bitmap[0])
+				abort();
+			if (!current_bitmap[1])
+				abort();
 			for (i = 0; i < Y_LEN; ++i) {
 				current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], png_get_rowbytes(current_png[0],current_png_info[0]));
 				current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], png_get_rowbytes(current_png[1],current_png_info[1]));
+				if (!current_bitmap[0][i])
+					abort();
+				if (!current_bitmap[1][i])
+					abort();
 				memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0]));
 				memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1]));
 			}
