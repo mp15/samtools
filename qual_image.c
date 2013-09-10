@@ -591,6 +591,10 @@ int bam_qualview(int argc, char *argv[])
 		return -1;
 	}
 	in = sam_open(argv[optind], "rb", NULL);
+	if (in == NULL) {
+		fprintf(stderr,"Error opening BAM/SAM file\n");
+		return -1;
+	}
 	open_files(argv[optind+1],out);
 	bam_qualview_core(in, out, argv[optind+1]);
 	sam_close(in);
