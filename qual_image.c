@@ -586,7 +586,10 @@ int bam_qualview(int argc, char *argv[])
 		switch (c) {
 		}
 	}
-	if (optind+1 >= argc) usage();
+	if (optind+1 >= argc) {
+		usage();
+		return -1;
+	}
 	in = sam_open(argv[optind], "rb", NULL);
 	open_files(argv[optind+1],out);
 	bam_qualview_core(in, out, argv[optind+1]);
