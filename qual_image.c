@@ -379,10 +379,10 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 		current_bitmap[1] = (png_bytepp)png_malloc(current_png[1], Y_LEN * sizeof(png_bytep));
 		int i;
 		for (i = 0; i < Y_LEN; ++i) {
-			current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], X_LEN * png_get_rowbytes(current_png[0],current_png_info[0]));
-			current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], X_LEN * png_get_rowbytes(current_png[1],current_png_info[1]));
-			memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0])*X_LEN);
-			memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1])*X_LEN);
+			current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], png_get_rowbytes(current_png[0],current_png_info[0]));
+			current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], png_get_rowbytes(current_png[1],current_png_info[1]));
+			memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0]));
+			memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1]));
 		}
 	}
 	else {
@@ -423,10 +423,10 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 			current_bitmap[0] = (png_bytepp)png_malloc(current_png[0], Y_LEN * sizeof(png_bytep));
 			current_bitmap[1] = (png_bytepp)png_malloc(current_png[1], Y_LEN * sizeof(png_bytep));
 			for (i = 0; i < Y_LEN; ++i) {
-				current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], X_LEN * png_get_rowbytes(current_png[0],current_png_info[0]));
-				current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], X_LEN * png_get_rowbytes(current_png[1],current_png_info[1]));
-				memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0])*X_LEN);
-				memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1])*X_LEN);
+				current_bitmap[0][i] = (png_bytep)png_malloc(current_png[0], png_get_rowbytes(current_png[0],current_png_info[0]));
+				current_bitmap[1][i] = (png_bytep)png_malloc(current_png[1], png_get_rowbytes(current_png[1],current_png_info[1]));
+				memset(current_bitmap[0][i], 0, png_get_rowbytes(current_png[0],current_png_info[0]));
+				memset(current_bitmap[1][i], 0, png_get_rowbytes(current_png[1],current_png_info[1]));
 			}
 			full_tile = parse->full_tile;
 			char buf_png[2][255];
