@@ -370,8 +370,8 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 		png_init_io(current_png[1], png[1]);
 		png_set_IHDR(current_png[0], current_png_info[0], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 		png_set_IHDR(current_png[1], current_png_info[1], X_LEN, Y_LEN, 8, PNG_COLOR_TYPE_PALETTE, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-		png_set_PLTE(current_png[0], current_png_info[0], QUAL_PALETTE, 51);
-		png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, 51);
+		png_set_PLTE(current_png[0], current_png_info[0], QUAL_PALETTE, QUAL_PALETTE_LEN);
+		png_set_PLTE(current_png[1], current_png_info[1], QUAL_PALETTE, QUAL_PALETTE_LEN);
 		png_write_info(current_png[0], current_png_info[0]);
 		png_write_info(current_png[1], current_png_info[1]);
 
@@ -498,12 +498,28 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 #else
 				if (bam_get_qual(b)[99] > 30) {
 					current_bitmap[read][parse->y/10][parse->x/10] = 4;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 4;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 4;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 4;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 4;
 				} else if (bam_get_qual(b)[99] > 20) {
 					current_bitmap[read][parse->y/10][parse->x/10] = 3;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 3;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 3;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 3;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 3;
 				} else if (bam_get_qual(b)[99] > 10) {
 					current_bitmap[read][parse->y/10][parse->x/10] = 2;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 2;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 2;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 2;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 2;
 				} else {
 					current_bitmap[read][parse->y/10][parse->x/10] = 1;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 1;
+					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 1;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 1;
+					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 1;
 				}
 #endif
 			}
