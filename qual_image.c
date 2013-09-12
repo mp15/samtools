@@ -21,8 +21,8 @@
 #include "htslib/sam.h"
 #include <png.h>
 
-const int X_LEN = 2048+100;
-const int Y_LEN = 10000+100;
+const int X_LEN = (2048+100)/4;
+const int Y_LEN = (10000+100)/4;
 
 #ifdef FULL_PALETTE
 #define QUAL_PALETTE_LEN 51
@@ -494,32 +494,32 @@ static bool bam_qualview_core(samFile* in, FILE* output[2][3][16], const char* p
 				welford_add(&tile_grid_isize[parse->surface][parse->swath][parse->tile], (double)b->core.isize);
 				fprintf(output[parse->surface][parse->swath][parse->tile], "%d\t%d\t%d\t%d\n", bam_get_qual(b)[99], parse->x, parse->y, read);
 #ifdef FULL_PALETTE
-				current_bitmap[read][parse->y/10][parse->x/10] = bam_get_qual(b)[99];
+				current_bitmap[read][parse->y/(10*4)][parse->x/(10*4)] = bam_get_qual(b)[99];
 #else
 				if (bam_get_qual(b)[99] > 30) {
-					current_bitmap[read][parse->y/10][parse->x/10] = 4;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 4;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 4;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 4;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 4;
+					current_bitmap[read][parse->y/(10*4)][parse->x/(10*4)] = 4;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) + 1] = 4;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) - 1] = 4;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) + 1] = 4;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) - 1] = 4;
 				} else if (bam_get_qual(b)[99] > 20) {
-					current_bitmap[read][parse->y/10][parse->x/10] = 3;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 3;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 3;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 3;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 3;
+					current_bitmap[read][parse->y/(10*4)][parse->x/(10*4)] = 3;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) + 1] = 3;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) - 1] = 3;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) + 1] = 3;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) - 1] = 3;
 				} else if (bam_get_qual(b)[99] > 10) {
-					current_bitmap[read][parse->y/10][parse->x/10] = 2;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 2;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 2;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 2;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 2;
+					current_bitmap[read][parse->y/(10*4)][parse->x/(10*4)] = 2;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) + 1] = 2;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) - 1] = 2;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) + 1] = 2;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) - 1] = 2;
 				} else {
-					current_bitmap[read][parse->y/10][parse->x/10] = 1;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 + 1] = 1;
-					current_bitmap[read][parse->y/10 + 1][parse->x/10 - 1] = 1;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 + 1] = 1;
-					current_bitmap[read][parse->y/10 - 1][parse->x/10 - 1] = 1;
+					current_bitmap[read][parse->y/(10*4)][parse->x/(10*4)] = 1;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) + 1] = 1;
+					current_bitmap[read][parse->y/(10*4) + 1][parse->x/(10*4) - 1] = 1;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) + 1] = 1;
+					current_bitmap[read][parse->y/(10*4) - 1][parse->x/(10*4) - 1] = 1;
 				}
 #endif
 			}
