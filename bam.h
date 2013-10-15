@@ -489,7 +489,7 @@ extern "C" {
 	  @param  end     the returned end coordinate
 	  @return         0 on success; -1 on failure
 	 */
-	int bam_parse_region(bam_header_t *header, const char *str, int *ref_id, int *begin, int *end);
+	int bam_parse_region(bam_hdr_t *header, const char *str, int *ref_id, int *begin, int *end);
 
 
 	/**************************
