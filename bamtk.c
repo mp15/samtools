@@ -63,6 +63,7 @@ int main_quickcheck(int argc, char *argv[]);
 int main_addreplacerg(int argc, char *argv[]);
 int faidx_main(int argc, char *argv[]);
 int dict_main(int argc, char *argv[]);
+int main_rmrg(int argc, char *argv[]);
 
 const char *samtools_version()
 {
@@ -132,6 +133,7 @@ static void usage(FILE *fp)
 "     quickcheck     quickly check if SAM/BAM/CRAM file appears intact\n"
 "     fastq          converts a BAM to a FASTQ\n"
 "     fasta          converts a BAM to a FASTA\n"
+"     rmrg           removes a specified readgroup\n"
 "\n"
 "  -- Statistics\n"
 "     bedcov         read depth per BED region\n"
@@ -211,6 +213,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
+    else if (strcmp(argv[1], "rmrg") == 0)    ret = main_rmrg(argc-1, argv+1);
     else if (strcmp(argv[1], "--version") == 0) {
         printf(
 "samtools %s\n"
