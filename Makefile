@@ -38,7 +38,7 @@ AOBJS=      bam_index.o bam_plcmd.o sam_view.o \
             cut_target.o phase.o bam2depth.o padding.o bedcov.o bamshuf.o \
             faidx.o dict.o stats.o stats_isize.o bam_flags.o bam_split.o \
             bam_tview.o bam_tview_curses.o bam_tview_html.o bam_lpileup.o \
-            bam_quickcheck.o bam_addrprg.o
+            bam_quickcheck.o bam_addrprg.o bam_extract.o
 
 prefix      = /usr/local
 exec_prefix = $(prefix)
@@ -168,6 +168,7 @@ bam_addrprg.o: bam_addrprg.c config.h $(htslib_sam_h) $(htslib_kstring_h) samtoo
 bam_aux.o: bam_aux.c config.h $(bam_h)
 bam_cat.o: bam_cat.c config.h $(htslib_bgzf_h) $(htslib_sam_h) $(htslib_cram_h) $(htslib_khash_h) samtools.h
 bam_color.o: bam_color.c config.h $(bam_h)
+bam_extract.o: bam_extract.c config.h $(htslib_sam_h) $(htslib_kstring_h) samtools.h $(sam_opts_h)
 bam_import.o: bam_import.c config.h $(htslib_kstring_h) $(bam_h) $(htslib_kseq_h)
 bam_index.o: bam_index.c config.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_khash_h) samtools.h
 bam_lpileup.o: bam_lpileup.c config.h $(bam_plbuf_h) $(bam_lpileup_h) $(htslib_ksort_h)
