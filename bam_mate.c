@@ -31,6 +31,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <ctype.h>
 #include "htslib/thread_pool.h"
 #include "sam_opts.h"
 #include "htslib/kstring.h"
@@ -472,17 +473,328 @@ int bam_sanitize(sam_hdr_t *h, bam1_t *b, int flags) {
     return 0;
 }
 
+// Look for 3 tags in one pass, for efficiencies sake
+static inline void find_tags(bam1_t *b,
+                             char *t1, uint8_t **t1p,
+                             char *t2, uint8_t **t2p,
+                             char *t3, uint8_t **t3p) {
+    *t1p = *t2p = *t3p = NULL;
+    uint8_t *aux = bam_aux_first(b);
+
+    while (aux) {
+        if (aux[-2] == t1[0] && toupper(aux[-1]) == t1[1])
+            *t1p = aux;
+        else if (aux[-2] == t2[0] && toupper(aux[-1]) == t2[1])
+            *t2p = aux;
+        else if (aux[-2] == t3[0] && toupper(aux[-1]) == t3[1])
+            *t3p = aux;
+        aux = bam_aux_next(b, aux);
+    }
+}
+
+// Return 5' and 3' CIGAR hard-clip counts
+static inline void hard_clips(bam1_t *b, int *end5, int *end3) {
+    uint32_t *cigar = bam_get_cigar(b);
+    int ncigar = b->core.n_cigar;
+    int endL = 0, endR = 0, nh = 0;
+
+    if (ncigar && bam_cigar_op(cigar[0]) == BAM_CHARD_CLIP)
+        endL = bam_cigar_oplen(cigar[0]), nh=1;
+    if (ncigar > nh && bam_cigar_op(cigar[ncigar-1]) == BAM_CHARD_CLIP)
+        endR = bam_cigar_oplen(cigar[ncigar-1]);
+
+    if (b->core.flag & BAM_FREVERSE) {
+        *end5 = endR;
+        *end3 = endL;
+    } else {
+        *end5 = endL;
+        *end3 = endR;
+    }
+}
+
+// Get MM, ML and MN tags, and 5' and 3' hard-clip lengths.
+// MNi is integer copy of MN, or -1 if absent/invalid
+void get_mod_info(bam1_t *b, uint8_t **MM, uint8_t **ML, uint8_t **MN,
+                  int *MNi, int *end5, int *end3) {
+    find_tags(b, "MM", MM, "ML", ML, "MN", MN);
+    if (*MN) {
+        *MNi = bam_aux2i(*MN);
+        if (errno == EINVAL)
+            *MNi = -1;
+    } else {
+        *MNi = -1;
+    }
+
+    if (*MM)
+        hard_clips(b, end5, end3);
+    else
+        *end5 = *end3 = 0; // don't need if MM not found
+}
+
+typedef struct MM_state {
+    // tags found on "pre" BAM
+    uint8_t *MM, *ML, *MN;
+} MM_state;
+
+uint8_t *MN_enc(uint8_t *tag, uint32_t n) {
+    if (n > UINT16_MAX) {
+        tag[0] = 'I';
+        i32_to_le(n, tag+1);
+        tag += 5;
+    } else if (n > UINT8_MAX) {
+        tag[0] = 'S';
+        i16_to_le(n, tag+1);
+        tag += 3;
+    } else {
+        *tag++ = 'C';
+        *tag++ = n;
+    }
+
+    return tag;
+}
+
+// Trim 5'/3' bases off MM and ML tags, using a previous sequence as a guide.
+int trim_MM(bam1_t *pre, bam1_t *cur, int end5, int end3,
+            uint8_t *MM, uint8_t *ML, uint8_t *MN) {
+    // seqi index / seq_nt16_table[]
+    int counts5[16] = {0}, counts3[16] = {0};
+
+    uint8_t *seq = bam_get_seq(pre);
+    int i, j;
+    for (i = 0; i < end5; i++)
+        counts5[bam_seqi(seq, i)]++;
+    memcpy(counts3, counts5, 16 * sizeof(*counts3));
+    for (; i < pre->core.l_qseq - end3; i++)
+        counts3[bam_seqi(seq, i)]++;
+
+    // "p" is position in pre.
+    // "q" is position in cur.
+    // Hence move up "p" to start and copy from there to "q".
+    uint8_t *MMp, *MLp, *MLend, *MMq = NULL, *MLq = NULL;
+    if (ML && ML[0] == 'B' && ML[1] == 'C') {
+        MLp = ML+6;
+        MLend = MLp + le_to_u32(ML+2);
+    } else {
+        ML = MLp = NULL;
+    }
+    MMq = MM+1;
+    MLq = MLp;
+    for (MMp = MM+1; *MMp && (!ML || *MLp); ) {
+        int fundamental = seq_nt16_table[*MMp];
+        while (*MMp && *MMp != ',')
+            *MMq++ = *MMp++;
+        if (*MMp)
+            *MMq++ = *MMp++;
+
+        // Now on comma separated list for MM and BC array for ML. Skip
+        int n = 0;
+        while (n < counts5[fundamental]) {
+            char *endptr;
+            long delta = strtol(MMp, &endptr, 10);
+            if (counts5[fundamental] - n > delta) {
+                // Skip entire delta in MM and ML.
+                // Eg counts[]=10, MM=3,10 ML=<10><20> => MM=10 ML=<20>
+                n += delta+1;
+                MLp++;
+            } else {
+                // Shrink delta, writing MM and ML is unchanged.
+                // Eg counts[]=3, MM=10,4 ML=<10><20> => MM=7,4 ML=<10><20>
+                //int l = sprintf(MMq, "%ld,", delta - counts5[fundamental]);
+                int l = sprintf(MMq, "%ld,", delta - (counts5[fundamental]-n));
+                //n = counts5[fundamental];
+                n += delta+1;
+                MMq += l;
+                *MLq++ = *MLp++;
+            }
+
+            MMp = endptr;
+            if (*MMp != ',')
+                // error?  if not ; also?
+                break;
+            MMp++;
+        }
+
+        // Copy
+        while (n < counts3[fundamental]) {
+            char *endptr;
+            long delta = strtol(MMp, &endptr, 10);
+            if (counts3[fundamental] - n > delta) {
+                // Copy entire delta in MM and ML including [,;]
+                memmove(MMq, MMp, (uint8_t *)endptr - MMp + 1);
+                MMq += (uint8_t *)endptr - MMp + 1;
+                n += delta+1;
+                if (ML)
+                    *MLq++ = *MLp++;
+            } else {
+                // Next mod is into 3' cutoff, so can terminate MM/ML now
+                n = counts3[fundamental];
+                MLp++;
+            }
+
+            MMp = endptr;
+            if (*MMp != ',')
+                break;
+            MMp++;
+        }
+
+        // Skip
+        while (*MMp && *MMp != ';') {
+            while (*MMp && *MMp != ',' && *MMp != ';')
+                MMp++;
+            if (*MMp == ',')
+                MMp++;
+
+            if (ML)
+                MLp++;
+        }
+        MMq[-1] = ';'; // replaces , with ; if clipping right
+        MMp++;
+    }
+
+    MMp++; // skip nul
+    *MMq++ = 0;
+
+    // Adjust ML B array length
+    u32_to_le(MLq-(ML+6), ML+2);
+
+    // Move MM and ML down to include their MM:Z and ML:B bits
+    if (MM) MM-=2;
+    if (ML) ML-=2;
+
+    // Now MM/ML are start of tags, MMq/MLq are ends of edited tags,
+    // and MMp/MLp are ends of original tags.  Walk through tags taking up
+    // any gaps
+    //
+    // Eg XXXXXXmmmmm--YYYlllll-ZZ (m and l are edited MM and ML tags)
+    // => XXXXXXmmmmmYYYlllllZZ
+
+    uint8_t *tag = bam_get_aux(cur), *tag_end = cur->data + cur->l_data;
+    uint8_t *to = tag;
+    //int mn_done = 0;
+    while (tag < tag_end) {
+        if (tag[0] == 'M' && (tag[1] == 'M' || tag[1] == 'm')) {
+            // Slow but easy
+            
+            memmove(to, MM, MMq-MM); // length of new tag
+            to += MMq-MM;
+            tag = MMp; // size of old tag
+        } else if (tag[0] == 'M' && (tag[1] == 'L' || tag[1] == 'l')) {
+            memmove(to, ML, MLq-ML);
+            to += MLq-ML;
+            tag = MLp;
+//        } else if (tag[0] == 'M' && tag[1] == 'N') {
+//            tag = MN_enc(tag, cur->core.l_qseq);
+//            mn_done = 1;
+        } else {
+            // Want aux_skip, but it's private.
+            // So we use bam_aux_next with work-arounds. :(
+            uint8_t *from = tag;
+            tag = bam_aux_next(cur, tag+2);
+            tag = tag ? tag-2 : tag_end;
+            memmove(to, from, tag-from);
+        }
+    }
+    cur->l_data = to - cur->data;
+
+//    // Set MN tag
+//    if (!mn_done) {
+//        // inefficient, but minimal compared to everything else
+//        if (bam_aux_update_int(cur, "MN", cur->core.l_qseq) < 0)
+//            return -1;
+//    }
+
+    return 0;
+}
+
+// Fix base modification tags MM, ML and MN.
+// For supplementary-style alignments we may have hard-clipped the sequence
+// and just duplicated the MM/ML tags.  Use the primary alignment to get the
+// clipped sequence so we can trim MM/ML accordingly.
+int fix_MM(bam1_t *pre, bam1_t *cur, int name_match, MM_state *state) {
+    int end5, end3;
+    int MNi = 0; // MN of -1 is used as indicator for no valid mods
+
+    if (!name_match) {
+        // First time we've see this name.
+        // Look for base modification tags and sanity check.
+        fprintf(stderr, "New read %s, len %d\n", bam_get_qname(cur), cur->core.l_qseq);
+        get_mod_info(cur, &state->MM, &state->ML, &state->MN, &MNi, &end5, &end3);
+        if (!state->MM)
+            return 0;
+
+        if (MNi > 0 && cur->core.l_qseq - MNi == end5) {
+            // MN and SEQ lengths disagree by 5' hard-clip size.
+            // Let's assume that's the cause.
+            fprintf(stderr, "TODO: Trim MM, ML, MN by %d\n", end5);
+        } else if (end5 == 0 && MNi <= 0) {
+            // No MN tag, but no clipping. Assume MM is valid
+            MNi = cur->core.l_qseq;
+            fprintf(stderr, "TODO: create MN tag\n");
+        } else {
+            // No MN tag and hard clips present - fail
+            fprintf(stderr, "TODO: drop MN / ML tags\n");
+            MNi = -1;
+        }
+    } else {
+        uint8_t *cur_MM = NULL, *cur_ML = NULL, *cur_MN = NULL;
+        MNi = -1;
+        get_mod_info(cur, &cur_MM, &cur_ML, &cur_MN, &MNi, &end5, &end3);
+
+        if (!cur_MM)
+            return 0;
+
+        fprintf(stderr, "MNi=%d seq=%d L %d R %d\n",
+                MNi, cur->core.l_qseq, end5, end3);
+
+        // Does MN match seq length?  If so, we believe it's already valid
+        if (MNi == cur->core.l_qseq)
+            return 0;
+
+        // Length mismatch and/or no known length, so check vs full seq.
+        if (pre->core.l_qseq != cur->core.l_qseq + end3 + end5) {
+            fprintf(stderr, "    Mismatch: CLEAR MM, ML, MN\n");
+            uint8_t *tag = bam_aux_first(cur);
+            while (tag) {
+                if (tag[-2] == 'M' &&
+                    (tag[-1] == 'M' || tag[-1] == 'm' ||
+                     tag[-1] == 'L' || tag[-1] == 'l' ||
+                     tag[-1] == 'N')) {
+                    // NB: not as efficient as it could be as we move tags
+                    // multiple times, but simple.
+                    fprintf(stderr, "        Del %.2s\n", tag-2);
+                    tag = bam_aux_remove(cur, tag);
+                } else {
+                    tag = bam_aux_next(cur, tag);
+                }
+            }
+            return 0;
+        } else if (end5 != 0) {
+            fprintf(stderr, "    Match: FIX MM\n");
+            trim_MM(pre, cur, end5, end3, cur_MM, cur_ML, cur_MN);
+        } // else no 5' hard clips so MM is already valid
+
+        // Set MN so we've validated it.
+        fprintf(stderr, "    Add MN\n");
+        // inefficient, but minimal compared to everything else
+        if (bam_aux_update_int(cur, "MN", cur->core.l_qseq) < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
 // currently, this function ONLY works if each read has one hit
 static int bam_mating_core(samFile *in, samFile *out, int remove_reads,
                            int proper_pair_check, int add_ct,
                            int do_mate_scoring, char *arg_list, int no_pg,
-                           int sanitize_flags)
+                           int sanitize_flags, int base_mods)
 {
     sam_hdr_t *header;
     bam1_t *b[2] = { NULL, NULL };
     int curr, has_prev, result;
     hts_pos_t pre_end = 0, cur_end = 0;
     kstring_t str = KS_INITIALIZE;
+    struct MM_state mm_state;
 
     header = sam_hdr_read(in);
     if (header == NULL) {
@@ -513,6 +825,19 @@ static int bam_mating_core(samFile *in, samFile *out, int remove_reads,
         bam1_t *cur = b[curr], *pre = b[1-curr];
         if (bam_sanitize(header, cur, sanitize_flags) < 0)
             goto fail;
+
+        int name_match = has_prev
+            ? strcmp(bam_get_qname(cur), bam_get_qname(pre)) == 0
+            : 0;
+
+        if (name_match)
+            fprintf(stderr, "%s %5d %s %5d\n",
+                    bam_get_qname(cur), cur->core.flag,
+                    bam_get_qname(pre), pre->core.flag);
+
+        if (base_mods)
+            fix_MM(pre, cur, name_match, &mm_state);
+
         if (cur->core.flag & BAM_FSECONDARY)
         {
             if ( !remove_reads ) {
@@ -531,7 +856,7 @@ static int bam_mating_core(samFile *in, samFile *out, int remove_reads,
         }
 
         if (has_prev) { // do we have a pair of reads to examine?
-            if (strcmp(bam_get_qname(cur), bam_get_qname(pre)) == 0) { // identical pair name
+            if (name_match) { // identical pair name
                 pre->core.flag |= BAM_FPAIRED;
                 cur->core.flag |= BAM_FPAIRED;
                 if (sync_mate(pre, cur)) goto fail;
@@ -646,7 +971,7 @@ int bam_mating(int argc, char *argv[])
     htsThreadPool p = {NULL, 0};
     samFile *in = NULL, *out = NULL;
     int c, remove_reads = 0, proper_pair_check = 1, add_ct = 0, res = 1,
-        mate_score = 0, no_pg = 0, sanitize_flags = FIX_ALL;
+        mate_score = 0, no_pg = 0, sanitize_flags = FIX_ALL, base_mods = 0;
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
     char wmode[4] = {'w', 'b', 0, 0};
     static const struct option lopts[] = {
@@ -658,12 +983,13 @@ int bam_mating(int argc, char *argv[])
 
     // parse args
     if (argc == 1) { usage(stdout); return 0; }
-    while ((c = getopt_long(argc, argv, "rpcmO:@:uz:", lopts, NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "rpcmMO:@:uz:", lopts, NULL)) >= 0) {
         switch (c) {
         case 'r': remove_reads = 1; break;
         case 'p': proper_pair_check = 0; break;
         case 'c': add_ct = 1; break;
         case 'm': mate_score = 1; break;
+        case 'M': base_mods = 1; break;
         case 'u': wmode[2] = '0'; break;
         case 1: no_pg = 1; break;
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
@@ -702,7 +1028,8 @@ int bam_mating(int argc, char *argv[])
 
     // run
     res = bam_mating_core(in, out, remove_reads, proper_pair_check, add_ct,
-                          mate_score, arg_list, no_pg, sanitize_flags);
+                          mate_score, arg_list, no_pg, sanitize_flags,
+                          base_mods);
 
     // cleanup
     sam_close(in);
