@@ -453,7 +453,7 @@ static void *bed_filter(void *reg_hash, void *tmp_hash) {
         if (k == kh_end(h) || !(p = &kh_val(h, k)) || !(p->n))
             continue;
 
-        new_a = calloc(q->n + p->n, sizeof(new_a[0]));
+        new_a = calloc(q->n + p->n, sizeof(hts_pair_pos_t));
         if (!new_a)
             return NULL;
         new_n = 0;
