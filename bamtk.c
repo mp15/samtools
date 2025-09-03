@@ -75,6 +75,7 @@ int main_reference(int argc, char *argv[]);
 int main_reset(int argc, char *argv[]);
 int main_cram_size(int argc, char *argv[]);
 int main_checksum(int argc, char *argv[]);
+int main_hicdigest(int argc, char *argv[]);
 
 const char *samtools_version(void)
 {
@@ -185,6 +186,7 @@ static void usage(FILE *fp)
 "     import         Converts FASTA or FASTQ files to SAM/BAM/CRAM\n"
 "     reference      Generates a reference from aligned data\n"
 "     reset          Reverts aligner changes in reads\n"
+"     hicdigest      digest Hi-C data into SAM\n"
 "\n"
 "  -- Statistics\n"
 "     bedcov         read depth per BED region\n"
@@ -295,6 +297,7 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[1], "reference") == 0) ret = main_reference(argc-1, argv+1);
     else if (strcmp(argv[1], "cram-size") == 0) ret = main_cram_size(argc-1, argv+1);
     else if (strcmp(argv[1], "checksum") == 0) ret = main_checksum(argc-1, argv+1);
+    else if (strcmp(argv[1], "hicdigest") == 0) ret = main_hicdigest(argc-1, argv+1);
     else if (strcmp(argv[1], "version") == 0 || \
              strcmp(argv[1], "--version") == 0)
         long_version();
